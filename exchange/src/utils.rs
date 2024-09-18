@@ -74,25 +74,26 @@ pub fn match_orders(
     sell_orders: &mut VecDeque<(Price, VecDeque<(OrderId, UserId, Quantity)>)>,
 ) -> Vec<TradeLog> {
     let mut trade_logs = Vec::new();
-    let mut new_buy_orders = VecDeque::new();
 
-    while !buy_orders.is_empty() && !sell_orders.is_empty() {
-        let (buy_price, mut buy_list) = buy_orders.pop_front().unwrap();
+    // TODO 效率优化 某用户高价买入委托单买不出去，则低价买入委托单也不需要撮合
+
+    for i in 0..buy_orders.len() {
+        let (buy_price, buy_list) = &mut buy_orders[i];
         let mut del_index_list = Vec::new();
-        for i in 0..buy_list.len() {
-            let (buy_order_id, buy_user_id, mut buy_quantity) = buy_list[i];
+        for j in 0..buy_list.len() {
+            let (buy_order_id, buy_user_id, mut buy_quantity) = buy_list[j];
             let (remain_buy_quantity, logs) = match_order(
                 buy_order_id,
                 buy_user_id,
-                buy_price,
+                *buy_price,
                 buy_quantity,
                 sell_orders,
             );
             buy_quantity = remain_buy_quantity;
-            buy_list[i] = (buy_order_id, buy_user_id, buy_quantity);
+            buy_list[j] = (buy_order_id, buy_user_id, buy_quantity);
             trade_logs.extend(logs);
             if buy_quantity == 0 {
-                del_index_list.push(i);
+                del_index_list.push(j);
             }
             if sell_orders.is_empty() {
                 break;
@@ -102,14 +103,17 @@ pub fn match_orders(
         for index in del_index_list.iter().rev() {
             buy_list.remove(*index);
         }
-        if !buy_list.is_empty() {
-            new_buy_orders.push_back((buy_price, buy_list));
-        }
         if sell_orders.is_empty() {
             break;
         }
     }
-    buy_orders.append(&mut new_buy_orders);
+
+    // 清理 buy_orders 中已成交的委托单
+    for i in (0..buy_orders.len()).rev() {
+        if buy_orders[i].1.is_empty() {
+            buy_orders.remove(i);
+        }
+    }
     trade_logs
 }
 

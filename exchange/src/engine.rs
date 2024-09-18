@@ -89,7 +89,7 @@ impl MatchingEngine {
                         order_ids
                             .iter()
                             .map(|id| exchange.order_manager.get_order(*id).unwrap())
-                            .map(|order| (order.id, order.user_id, order.quantity))
+                            .map(|order| (order.id, order.user_id, order.remaining_quantity))
                             .filter(|(_, _, quantity)| *quantity > 0)
                             .collect::<VecDeque<(OrderId, UserId, Quantity)>>(),
                     )
@@ -105,7 +105,7 @@ impl MatchingEngine {
                         order_ids
                             .iter()
                             .map(|id| exchange.order_manager.get_order(*id).unwrap())
-                            .map(|order| (order.id, order.user_id, order.quantity))
+                            .map(|order| (order.id, order.user_id, order.remaining_quantity))
                             .filter(|(_, _, quantity)| *quantity > 0)
                             .collect::<VecDeque<(OrderId, UserId, Quantity)>>(),
                     )
@@ -120,8 +120,6 @@ impl MatchingEngine {
                         order
                     }),
             );
-
-            // 删除已成交的委托单
         }
         trade_logs
     }

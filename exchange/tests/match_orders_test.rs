@@ -182,3 +182,37 @@ fn test_match_orders_no_match() {
     assert_eq!(sell_price, 100);
     assert_eq!(sell_order[0], (2, 2, 100));
 }
+
+#[test]
+fn test_match_orders_no_match_2() { 
+// buy_orders: [(110, [(167, 1, 100000)]), (105, [(197, 3, 200)]), (104, [(194, 7, 100), (201, 6, 500)]), (102, [(173, 7, 500), (175, 6, 300), (179, 9, 400), (186, 8, 100), (187, 5, 200), (191, 5, 500), (202, 9, 100), (205, 4, 100)]), (101, [(169, 9, 400)]), (98, [(102, 8, 400), (137, 10, 100), (138, 9, 400), (166, 11, 400)]), (97, [(89, 7, 400), (133, 9, 400)]), (96, [(105, 8, 400), (119, 3, 500), (121, 6, 100), (122, 11, 200), (127, 3, 400)])]
+    // sell_orders: [(102, [(207, 5, 300)]), (104, [(208, 3, 100), (209, 9, 400)])]
+    let mut buy_orders = VecDeque::new();
+    let mut sell_orders = VecDeque::new();
+
+    // 添加买单
+    buy_orders.push_back((110, VecDeque::from(vec![(167, 1, 100000)])));
+    buy_orders.push_back((105, VecDeque::from(vec![(197, 3, 200)])));
+    buy_orders.push_back((104, VecDeque::from(vec![(194, 7, 100), (201, 6, 500)])));
+    buy_orders.push_back((102, VecDeque::from(vec![(173, 7, 500), (175, 6, 300), (179, 9, 400), (186, 8, 100), (187, 5, 200), (191, 5, 500), (202, 9, 100), (205, 4, 100)])));
+    buy_orders.push_back((101, VecDeque::from(vec![(169, 9, 400)])));
+    buy_orders.push_back((98, VecDeque::from(vec![(102, 8, 400), (137, 10, 100), (138, 9, 400), (166, 11, 400)])));
+    buy_orders.push_back((97, VecDeque::from(vec![(89, 7, 400), (133, 9, 400)])));
+    buy_orders.push_back((96, VecDeque::from(vec![(105, 8, 400), (119, 3, 500), (121, 6, 100), (122, 11, 200), (127, 3, 400)])));
+
+    // 添加卖单
+    sell_orders.push_back((102, VecDeque::from(vec![(207, 5, 300)])));
+    sell_orders.push_back((104, VecDeque::from(vec![(208, 3, 100), (209, 9, 400)])));
+
+    // 执行撮合
+    let trade_logs = utils::match_orders(&mut buy_orders, &mut sell_orders);
+    println!("trade_logs: {:?}", trade_logs);
+    println!("buy_orders: {:?}", buy_orders);
+    // 验证结果
+    assert_eq!(buy_orders.len(), 8);
+    assert_eq!(sell_orders.len(), 0);
+
+    let (buy_price, buy_order) = buy_orders.pop_front().unwrap();
+    assert_eq!(buy_price, 110);
+    assert_eq!(buy_order[0], (167, 1, 99200));
+}

@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use crate::config::ExchangeConfig;
 use crate::config::TradingPeriodType;
 use crate::engine::MatchingEngine;
@@ -13,7 +11,7 @@ use crate::stock::StockManager;
 use crate::trade_day::TradingCalendar;
 use crate::trading_bot::TradingBotManager;
 use crate::trading_strategy::TradingAction;
-use crate::trading_strategy::TradingStrategyType;
+use crate::trading_strategy::TradingStrategy;
 use crate::types::*;
 use crate::user::UserManager;
 use chrono::NaiveDate;
@@ -86,80 +84,63 @@ impl Exchange {
                 TradingPeriodType::ContinuousTrading => {
                     // 连续交易
                     let trade_logs = self.engine.continuous_trading(self);
-                    // stock_code -> price -> order_ids
-                    let mut ready_del_buy_order: BTreeMap<String, BTreeMap<u32, (Vec<u64>, u64)>> =
-                        BTreeMap::new();
-                    let mut ready_del_sell_order: BTreeMap<String, BTreeMap<u32, (Vec<u64>, u64)>> =
-                        BTreeMap::new();
-
                     for trade_log in trade_logs {
                         self.log_manager.add_log(trade_log.clone());
                         let sell_order_id = trade_log.sell_order_id;
                         let buy_order_id = trade_log.buy_order_id;
                         let stock_code = trade_log.stock_code;
-                        let price: u32 = trade_log.price;
-                        let quantity = trade_log.quantity;
+                        let trade_price: u32 = trade_log.price;
+                        let trade_quantity = trade_log.quantity;
+
+                        let stock = self.stock_manager.get_stock_mut(&stock_code).unwrap();
+                        stock.set_current_price(trade_price);
+                        stock.add_price_to_history(timestamp, trade_price, trade_quantity);
+                        stock.update_daily_info();
 
                         let buy_order = self.order_manager.get_order_mut(buy_order_id).unwrap();
-                        buy_order.execute(quantity, price, timestamp);
+                        buy_order.execute(trade_quantity, trade_price, timestamp);
+
+                        // 更新买卖队列
+
+                        stock
+                            .buy_quantities
+                            .entry(buy_order.price)
+                            .and_modify(|quantity| {
+                                *quantity -= trade_quantity as u64;
+                            });
 
                         if buy_order.is_filled() {
-                            let temp = ready_del_buy_order
-                                .entry(stock_code.clone())
-                                .or_insert_with(BTreeMap::new)
+                            stock
+                                .buy_orders
                                 .entry(buy_order.price)
-                                .or_insert_with(|| (Vec::new(), 0));
-                            temp.0.push(buy_order_id);
-                            temp.1 += quantity as u64;
+                                .and_modify(|orders| {
+                                    orders.retain(|order_id| order_id != &buy_order_id);
+                                });
+
+                            if stock.buy_orders.get(&buy_order.price).unwrap().is_empty() {
+                                stock.buy_orders.remove(&buy_order.price);
+                            }
                         }
 
                         let sell_order = self.order_manager.get_order_mut(sell_order_id).unwrap();
-                        sell_order.execute(quantity, price, timestamp);
+                        sell_order.execute(trade_quantity, trade_price, timestamp);
+
+                        stock
+                            .sell_quantities
+                            .entry(sell_order.price)
+                            .and_modify(|quantity| {
+                                *quantity -= trade_quantity as u64;
+                            });
 
                         if sell_order.is_filled() {
-                            let temp = ready_del_sell_order
-                                .entry(stock_code.clone())
-                                .or_insert_with(BTreeMap::new)
+                            stock
+                                .sell_orders
                                 .entry(sell_order.price)
-                                .or_insert_with(|| (Vec::new(), 0));
-                            temp.0.push(sell_order_id);
-                            temp.1 += quantity as u64;
-                        }
-
-                        let stock = self.stock_manager.get_stock_mut(&stock_code).unwrap();
-                        stock.set_current_price(price);
-                        stock.add_price_to_history(timestamp, price, quantity);
-                        stock.update_daily_info();
-                    }
-
-                    // 整理股票委托，清空已成交的委托
-                    for (stock_code, price_orders) in ready_del_buy_order.iter() {
-                        let stock = self.stock_manager.get_stock_mut(stock_code).unwrap();
-                        for (price, (order_ids, num)) in price_orders.iter() {
-                            stock.buy_orders.entry(*price).and_modify(|orders| {
-                                orders.retain(|order_id| !order_ids.contains(order_id));
-                            });
-                            stock.buy_quantity.entry(*price).and_modify(|quantity| {
-                                *quantity -= *num;
-                            });
-                            if stock.buy_orders.get(price).unwrap().is_empty() {
-                                stock.buy_orders.remove(&price);
-                            }
-                        }
-                    }
-
-                    for (stock_code, price_orders) in ready_del_sell_order.iter() {
-                        let stock = self.stock_manager.get_stock_mut(stock_code).unwrap();
-                        for (price, (order_ids, num)) in price_orders.iter() {
-                            stock.sell_orders.entry(*price).and_modify(|orders| {
-                                orders.retain(|order_id| !order_ids.contains(order_id));
-                            });
-                            stock.sell_quantity.entry(*price).and_modify(|quantity| {
-                                *quantity -= *num;
-                            });
-
-                            if stock.sell_orders.get(price).unwrap().is_empty() {
-                                stock.sell_orders.remove(&price);
+                                .and_modify(|orders| {
+                                    orders.retain(|order_id| order_id != &sell_order_id);
+                                });
+                            if stock.sell_orders.get(&sell_order.price).unwrap().is_empty() {
+                                stock.sell_orders.remove(&sell_order.price);
                             }
                         }
                     }
@@ -384,7 +365,7 @@ impl Exchange {
         &mut self,
         user_name: &str,
         initial_balance: u64,
-        strategy: TradingStrategyType,
+        strategy: TradingStrategy,
         initial_holdings: Vec<(&str, u64)>,
     ) -> Result<UserId, ExchangeError> {
         let user_id = self.add_user(user_name, initial_balance)?;

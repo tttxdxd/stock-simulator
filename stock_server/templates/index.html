@@ -107,6 +107,9 @@
                                             <span>当前价格: {{ formatPrice(selectedStock.current_price) }}</span>
                                         </a-col>
                                         <a-col :span="6">
+                                            <span>昨天收盘: {{ formatPrice(selectedStock.start_price) }}</span>
+                                        </a-col>
+                                        <a-col :span="6">
                                             <span>今日最高: {{ formatPrice(selectedStock.highest_price) }}</span>
                                         </a-col>
                                         <a-col :span="6">
@@ -197,7 +200,8 @@
                         <a-row :gutter="8" style="margin-top: 10px;">
                             <a-col :span="24">
                                 <a-card :bordered="false" title="最近交易记录">
-                                    <a-table :dataSource="recentTrades" :columns="tradeColumns" :pagination="false" size="small">
+                                    <a-table :data-source="recentTrades" :columns="tradeColumns" :pagination="false"
+                                        size="small">
                                         <template slot="tradeType" slot-scope="text">
                                             <a-tag :color="text === 'buy' ? 'red' : 'green'">
                                                 {{ text === 'buy' ? '买入' : '卖出' }}
@@ -215,6 +219,16 @@
 
     <script>
         Vue.use(antd);
+
+        function formatPrice(value) {
+            if (typeof value === 'number') {
+                return (value / 100).toFixed(2);
+            } else if (typeof value === 'string') {
+                return value;
+            } else {
+                return '--';
+            }
+        }
 
         new Vue({
             el: '#app',
@@ -259,7 +273,7 @@
                         title: '价格',
                         dataIndex: 'price',
                         key: 'price',
-                        customRender: (text) => this.formatPrice(text),
+                        customRender: (text) => formatPrice(text),
                     },
                     {
                         title: '数量',
@@ -462,7 +476,7 @@
                             {
                                 name: "Price",
                                 type: "line",
-                                data: completeData.map(item => [item[0], item[1]]),
+                                data: completeData,
                                 smooth: true,
                                 symbol: "none",
                                 sampling: "average",
@@ -491,19 +505,19 @@
                             page_size: 10
                         }
                     })
-                    .then(response => {
-                        if (response.data.code === 0) {
-                            this.recentTrades = response.data.data.list.map(trade => ({
-                                ...trade,
-                                timestamp: this.formatTime(trade.timestamp),
-                                price: this.formatPrice(trade.price),
-                                trade_type: trade.trade_type === 0 ? 'buy' : 'sell'
-                            }));
-                        } else {
-                            console.error('获取交易历史失败:', response.data.message);
-                        }
-                    })
-                    .catch(error => console.error('获取交易历史失败:', error));
+                        .then(response => {
+                            if (response.data.code === 0) {
+                                this.recentTrades = response.data.data.list.map(trade => ({
+                                    ...trade,
+                                    timestamp: this.formatTime(trade.timestamp),
+                                    price: this.formatPrice(trade.price),
+                                    trade_type: trade.trade_type === 0 ? 'buy' : 'sell'
+                                }));
+                            } else {
+                                console.error('获取交易历史失败:', response.data.message);
+                            }
+                        })
+                        .catch(error => console.error('获取交易历史失败:', error));
                 },
                 fetchExchangeDetails() {
                     axios.get('/exchange_details')
@@ -594,15 +608,7 @@
                         this.chart.resize();
                     }
                 },
-                formatPrice(value) {
-                    if (typeof value === 'number') {
-                        return (value / 100).toFixed(2);
-                    } else if (typeof value === 'string') {
-                        return value;
-                    } else {
-                        return '--';
-                    }
-                }
+                formatPrice
             },
             beforeDestroy() {
                 if (this.priceUpdateInterval) {

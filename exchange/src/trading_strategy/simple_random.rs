@@ -1,34 +1,12 @@
 use crate::exchange::Exchange;
-use crate::types::*;
+use crate::trading_strategy::{TradingAction, TradingStrategyDecide};
 use crate::user::User;
 use rand::Rng;
-
-pub enum TradingStrategyType {
-    Random,
-}
-
-pub trait TradingStrategy {
-    fn decide(&self, user: &User, exchange: &Exchange) -> TradingAction;
-}
-
-pub enum TradingAction {
-    Buy {
-        stock_code: StockCode,
-        price: Price,
-        quantity: Quantity,
-    },
-    Sell {
-        stock_code: StockCode,
-        price: Price,
-        quantity: Quantity,
-    },
-    Hold,
-}
 
 // 修改后的随机交易策略
 pub struct RandomStrategy;
 
-impl TradingStrategy for RandomStrategy {
+impl TradingStrategyDecide for RandomStrategy {
     fn decide(&self, user: &User, exchange: &Exchange) -> TradingAction {
         let mut rng = rand::thread_rng();
 
@@ -72,7 +50,7 @@ impl TradingStrategy for RandomStrategy {
                         TradingAction::Sell {
                             stock_code: stock.code.clone(),
                             price,
-                            quantity: quantity as u32,   
+                            quantity: quantity as u32,
                         }
                     } else {
                         TradingAction::Hold

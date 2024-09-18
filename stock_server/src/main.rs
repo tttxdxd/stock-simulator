@@ -22,7 +22,7 @@ use exchange::{
     exchange::Exchange,
     exchange_error::ExchangeError,
     order::OrderType,
-    trading_strategy::TradingStrategyType,
+    trading_strategy::TradingStrategy,
     types::{OrderId, Price, Quantity, StockCode, Timestamp, UserId},
 };
 
@@ -182,27 +182,25 @@ async fn main() {
 
     {
         let mut ex = exchange.lock().unwrap();
-        ex.add_stock("000001", "平安银行", 15000).unwrap();
-        ex.add_stock("000002", "万科A", 280000).unwrap();
+        ex.add_stock("000001", "股票A", 100).unwrap();
+        ex.add_stock("000002", "股票B", 200).unwrap();
         ex.add_user("user1", 100000000).unwrap();
         ex.add_user("user2", 150000000).unwrap();
-        ex.add_robot("robot1", 100000000, TradingStrategyType::Random, vec![("000001", 100000)])
+        ex.add_robot("robot1", 100000000, TradingStrategy::SimpleRandom, vec![("000001", 100000)])
             .unwrap();
-        ex.add_robot("robot2", 100000000, TradingStrategyType::Random, vec![("000002", 100000)])
+        ex.add_robot("robot2", 100000000, TradingStrategy::SimpleRandom, vec![("000002", 100000)])
             .unwrap();
-        ex.add_robot("robot3", 100000000, TradingStrategyType::Random, vec![("000001", 100000), ("000002", 100000)])
+        ex.add_robot("robot3", 100000000, TradingStrategy::TradeRandom(5), vec![("000001", 100000), ("000002", 100000)])
             .unwrap();
-        ex.add_robot("robot4", 100000000, TradingStrategyType::Random, vec![("000001", 100000), ("000002", 100000)])
+        ex.add_robot("robot5", 100000000, TradingStrategy::SimpleRandom, vec![("000001", 100000), ("000002", 100000)])
             .unwrap();
-        ex.add_robot("robot5", 100000000, TradingStrategyType::Random, vec![("000001", 100000), ("000002", 100000)])
+        ex.add_robot("robot6", 100000000, TradingStrategy::TradeRandom(5), vec![("000001", 100000), ("000002", 100000)])
             .unwrap();
-        ex.add_robot("robot6", 100000000, TradingStrategyType::Random, vec![("000001", 100000), ("000002", 100000)])
+        ex.add_robot("robot7", 100000000, TradingStrategy::SimpleRandom, vec![("000001", 100000), ("000002", 100000)])
             .unwrap();
-        ex.add_robot("robot7", 100000000, TradingStrategyType::Random, vec![("000001", 100000), ("000002", 100000)])
+        ex.add_robot("robot8", 100000000, TradingStrategy::TradeRandom(5), vec![("000001", 100000), ("000002", 100000)])
             .unwrap();
-        ex.add_robot("robot8", 100000000, TradingStrategyType::Random, vec![("000001", 100000), ("000002", 100000)])
-            .unwrap();
-        ex.add_robot("robot9", 100000000, TradingStrategyType::Random, vec![("000001", 100000), ("000002", 100000)])
+        ex.add_robot("robot9", 100000000, TradingStrategy::TradeRandom(5), vec![("000001", 100000), ("000002", 100000)])
             .unwrap();
     }
     let app_state = AppState {

@@ -24,9 +24,9 @@ pub struct Stock {
 
     // 订单管理结构
     pub buy_orders: BTreeMap<u32, Vec<OrderId>>,
-    pub buy_quantity: BTreeMap<u32, u64>,
+    pub buy_quantities: BTreeMap<u32, u64>,
     pub sell_orders: BTreeMap<u32, Vec<OrderId>>,
-    pub sell_quantity: BTreeMap<u32, u64>,
+    pub sell_quantities: BTreeMap<u32, u64>,
 
     // 买卖队列
     pub order_queue: (Vec<(Price, u64)>, Vec<(Price, u64)>),
@@ -102,9 +102,9 @@ impl Stock {
             },
             price_history: Vec::new(),
             buy_orders: BTreeMap::new(),
-            buy_quantity: BTreeMap::new(),
+            buy_quantities: BTreeMap::new(),
             sell_orders: BTreeMap::new(),
-            sell_quantity: BTreeMap::new(),
+            sell_quantities: BTreeMap::new(),
             order_queue: (Vec::new(), Vec::new()),
         }
     }
@@ -147,12 +147,12 @@ impl Stock {
             .buy_orders
             .iter()
             .rev()
-            .map(|(price, _)| (*price, self.buy_quantity.get(price).unwrap_or(&0).clone()))
+            .map(|(price, _)| (*price, self.buy_quantities.get(price).unwrap_or(&0).clone()))
             .collect();
         let sell_queue = self
             .sell_orders
             .iter()
-            .map(|(price, _)| (*price, self.sell_quantity.get(price).unwrap_or(&0).clone()))
+            .map(|(price, _)| (*price, self.sell_quantities.get(price).unwrap_or(&0).clone()))
             .collect();
 
         self.order_queue = (buy_queue, sell_queue);
@@ -250,8 +250,8 @@ impl Stock {
             OrderType::Sell => &mut self.sell_orders,
         };
         let quantities = match order.order_type {
-            OrderType::Buy => &mut self.buy_quantity,
-            OrderType::Sell => &mut self.sell_quantity,
+            OrderType::Buy => &mut self.buy_quantities,
+            OrderType::Sell => &mut self.sell_quantities,
         };
         orders
             .entry(order.price)
@@ -275,8 +275,8 @@ impl Stock {
             OrderType::Sell => &mut self.sell_orders,
         };
         let quantities = match order.order_type {
-            OrderType::Buy => &mut self.buy_quantity,
-            OrderType::Sell => &mut self.sell_quantity,
+            OrderType::Buy => &mut self.buy_quantities,
+            OrderType::Sell => &mut self.sell_quantities,
         };
         if let Some(order_ids) = orders.get_mut(&order.price) {
             order_ids.retain(|&id| id != order.id);

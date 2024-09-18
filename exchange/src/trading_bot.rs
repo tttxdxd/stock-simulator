@@ -1,7 +1,5 @@
 use crate::exchange::Exchange;
-use crate::trading_strategy::{
-    RandomStrategy, TradingAction, TradingStrategy, TradingStrategyType,
-};
+use crate::trading_strategy::{get_trading_strategy, TradingAction, TradingStrategy};
 use crate::types::*;
 use crate::user::User;
 use std::collections::HashMap;
@@ -9,21 +7,17 @@ use std::collections::HashMap;
 pub struct TradingBot {
     #[allow(dead_code)]
     user_id: UserId,
-    strategy: TradingStrategyType,
+    strategy: TradingStrategy,
 }
 
 impl TradingBot {
-    pub fn new(user_id: UserId, strategy: TradingStrategyType) -> Self {
+    pub fn new(user_id: UserId, strategy: TradingStrategy) -> Self {
         TradingBot { user_id, strategy }
     }
 
     pub fn execute_strategy(&self, user: &User, exchange: &Exchange) -> TradingAction {
-        match self.strategy {
-            TradingStrategyType::Random => {
-                let strategy = RandomStrategy;
-                strategy.decide(user, exchange)
-            }
-        }
+        let strategy = get_trading_strategy(self.strategy.clone());
+        strategy.decide(user, exchange)
     }
 }
 
@@ -38,7 +32,7 @@ impl TradingBotManager {
         }
     }
 
-    pub fn add_bot(&mut self, user_id: UserId, strategy: TradingStrategyType) {
+    pub fn add_bot(&mut self, user_id: UserId, strategy: TradingStrategy) {
         let bot = TradingBot::new(user_id, strategy);
         self.bots.insert(user_id, bot);
     }
