@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>模拟交易所</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/ant-design-vue/1.7.8/antd.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ant-design-vue/1.7.8/antd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.2/dist/echarts.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <style>
+        #app {
+            padding: 0px;
+        }
+
+        .stock-list {
+            height: calc(100vh - 64px);
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+
+        .chart-container,
+        .order-queue-container {
+            height: 300px;
+            overflow: hidden;
+        }
+
+        .order-queue-list {
+            font-size: 12px;
+        }
+
+        .order-queue-list .ant-list-item {
+            padding: 2px 4px;
+        }
+
+        .order-queue-price {
+            margin-right: 4px;
+            display: inline-block;
+            width: 60px;
+            text-align: right;
+        }
+
+        .order-queue-volume {
+            float: right;
+            width: 60px;
+            text-align: right;
+        }
+
+        .ant-layout-header {
+            height: 50px;
+            line-height: 50px;
+            padding: 0 15px;
+        }
+
+        .ant-layout-content {
+            padding: 10px;
+        }
+
+        .ant-card {
+            margin-bottom: 10px;
+        }
+
+        .ant-card-body {
+            padding: 12px;
+        }
+
+        .ant-form-item {
+            margin-bottom: 12px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="app">
+        <a-layout>
+            <a-layout-header>
+                <a-row type="flex" justify="space-between" align="middle">
+                    <a-col>
+                        <h2 style="color: white; margin: 0;">{{ exchangeName }}</h2>
+                    </a-col>
+                    <a-col>
+                        <span style="color: white; margin-right: 10px;">交易所时间: {{ currentTime }}</span>
+                        <a-tag :color="periodTagColor">{{ currentPeriod.name }}</a-tag>
+                    </a-col>
+                </a-row>
+            </a-layout-header>
+            <a-layout>
+                <a-layout-sider width="250" style="background: #fff">
+                    <a-menu mode="inline" :default-selected-keys="['1']" class="stock-list">
+                        <a-menu-item v-for="stock in stocks" :key="stock.code" @click="selectStock(stock.code)">
+                            <span>{{ stock.code }} - {{ stock.name }}</span>
+                            <span style="float: right">{{ formatPrice(stock.current_price) }}</span>
+                        </a-menu-item>
+                    </a-menu>
+                </a-layout-sider>
+                <a-layout-content>
+                    <template v-if="selectedStock">
+                        <a-page-header :title="`${selectedStock.code} - ${selectedStock.name}`">
+                        </a-page-header>
+                        <a-row :gutter="8">
+                            <a-col :span="24">
+                                <a-card :bordered="false">
+                                    <a-row :gutter="[16, 8]">
+                                        <a-col :span="6">
+                                            <span>当前价格: {{ formatPrice(selectedStock.current_price) }}</span>
+                                        </a-col>
+                                        <a-col :span="6">
+                                            <span>今日最高: {{ formatPrice(selectedStock.highest_price) }}</span>
+                                        </a-col>
+                                        <a-col :span="6">
+                                            <span>今日最低: {{ formatPrice(selectedStock.lowest_price) }}</span>
+                                        </a-col>
+                                        <a-col :span="6">
+                                            <span>价格变动:
+                                                <span
+                                                    :class="{'ant-typography-success': selectedStock.price_amplitude > 0, 'ant-typography-danger': selectedStock.price_amplitude < 0}">
+                                                    {{ (selectedStock.price_amplitude).toFixed(2) }}%
+                                                </span>
+                                            </span>
+                                        </a-col>
+                                        <a-col :span="6">
+                                            <span>涨停价: <span class="ant-typography-danger">{{
+                                                    formatPrice(selectedStock.limit_upper) }}</span></span>
+                                        </a-col>
+                                        <a-col :span="6">
+                                            <span>跌停价: <span class="ant-typography-success">{{
+                                                    formatPrice(selectedStock.limit_lower) }}</span></span>
+                                        </a-col>
+                                    </a-row>
+                                </a-card>
+                            </a-col>
+                        </a-row>
+                        <a-row :gutter="8" style="margin-top: 0px;">
+                            <a-col :span="24">
+                                <a-card :bordered="false">
+                                    <a-form-model :model="orderForm" @submit.prevent="submitOrder" layout="inline">
+                                        <a-form-model-item>
+                                            <a-radio-group v-model="orderForm.type" button-style="solid">
+                                                <a-radio-button value="buy">买入</a-radio-button>
+                                                <a-radio-button value="sell">卖出</a-radio-button>
+                                            </a-radio-group>
+                                        </a-form-model-item>
+                                        <a-form-model-item label="数量">
+                                            <a-input-number v-model="orderForm.quantity" :min="100" :step="100"
+                                                style="width: 120px" />
+                                        </a-form-model-item>
+                                        <a-form-model-item label="价格">
+                                            <a-input-number v-model="orderForm.price" :min="0" :step="0.01"
+                                                style="width: 120px" />
+                                        </a-form-model-item>
+                                        <a-form-model-item>
+                                            <a-button :type="orderForm.type === 'buy' ? 'primary' : 'danger'"
+                                                html-type="submit" :disabled="!currentPeriod.allow_order">
+                                                {{ orderForm.type === 'buy' ? '买入' : '卖出' }}
+                                            </a-button>
+                                        </a-form-model-item>
+                                    </a-form-model>
+                                </a-card>
+                            </a-col>
+                        </a-row>
+                        <a-row :gutter="8" style="margin-top: 0px;">
+                            <a-col :span="16">
+                                <a-card :bordered="false" bodyStyle="padding: 0;">
+                                    <div id="priceChart" class="chart-container"></div>
+                                </a-card>
+                            </a-col>
+                            <a-col :span="8">
+                                <a-card :bordered="false" bodyStyle="padding: 0;">
+                                    <div class="order-queue-container">
+                                        <a-list size="small" bordered class="order-queue-list">
+                                            <a-list-item v-for="(item, index) in orderQueue.asks.slice().reverse()"
+                                                :key="'ask-'+index">
+                                                <span>卖{{ 5 - index }}</span>
+                                                <span class="order-queue-price" style="color: #ff4d4f;">
+                                                    {{ item ? formatPrice(item[0]) : '--' }}
+                                                </span>
+                                                <span class="order-queue-volume">{{ item ? item[1] : '--' }}</span>
+                                            </a-list-item>
+                                        </a-list>
+                                        <div style="border-top: 1px solid #e8e8e8; margin: 8px 0;"></div>
+                                        <a-list size="small" bordered class="order-queue-list">
+                                            <a-list-item v-for="(item, index) in orderQueue.bids" :key="'bid-'+index">
+                                                <span>买{{ index + 1 }}</span>
+                                                <span class="order-queue-price" style="color: #52c41a;">
+                                                    {{ item ? formatPrice(item[0]) : '--' }}
+                                                </span>
+                                                <span class="order-queue-volume">{{ item ? item[1] : '--' }}</span>
+                                            </a-list-item>
+                                        </a-list>
+                                    </div>
+                                </a-card>
+                            </a-col>
+                        </a-row>
+                        <!-- 在分时图和买5卖5的容器下面添加交易记录 -->
+                        <a-row :gutter="8" style="margin-top: 10px;">
+                            <a-col :span="24">
+                                <a-card :bordered="false" title="最近交易记录">
+                                    <a-table :dataSource="recentTrades" :columns="tradeColumns" :pagination="false" size="small">
+                                        <template slot="tradeType" slot-scope="text">
+                                            <a-tag :color="text === 'buy' ? 'red' : 'green'">
+                                                {{ text === 'buy' ? '买入' : '卖出' }}
+                                            </a-tag>
+                                        </template>
+                                    </a-table>
+                                </a-card>
+                            </a-col>
+                        </a-row>
+                    </template>
+                </a-layout-content>
+            </a-layout>
+        </a-layout>
+    </div>
+
+    <script>
+        Vue.use(antd);
+
+        new Vue({
+            el: '#app',
+            data: {
+                stocks: [],
+                selectedStock: null,
+                chart: null,
+                orderForm: { type: 'buy', quantity: null, price: null },
+                recentTrades: [],
+                exchangeName: '模拟交易所',
+                currentTime: null,
+                currentPeriod: {
+                    name: null,
+                    start_tick: null,
+                    end_tick: null,
+                    period_type: null,
+                    allow_order: false,
+                    allow_cancel: false,
+                    allow_matching: false,
+                },
+                orderQueue: {
+                    bids: [],
+                    asks: []
+                },
+                priceHistory: [],
+                lastFetchedTime: null,
+                errorMessage: '',
+                showError: false,
+                tradeColumns: [
+                    {
+                        title: '时间',
+                        dataIndex: 'timestamp',
+                        key: 'timestamp',
+                    },
+                    {
+                        title: '类型',
+                        dataIndex: 'trade_type',
+                        key: 'trade_type',
+                        scopedSlots: { customRender: 'tradeType' },
+                    },
+                    {
+                        title: '价格',
+                        dataIndex: 'price',
+                        key: 'price',
+                        customRender: (text) => this.formatPrice(text),
+                    },
+                    {
+                        title: '数量',
+                        dataIndex: 'quantity',
+                        key: 'quantity',
+                    },
+                ],
+            },
+            mounted() {
+                this.fetchStocks();
+                this.fetchExchangeDetails();
+                setInterval(this.fetchExchangeDetails, 1000);
+                setInterval(this.updateSelectedStock, 1000);
+                window.addEventListener('resize', this.resizeChart);
+            },
+            computed: {
+                periodTagColor() {
+                    switch (this.currentPeriod.period_type) {
+                        case 'ContinuousTrading':
+                            return 'green';
+                        case 'OpeningCallAuction':
+                        case 'ClosingCallAuction':
+                            return 'orange';
+                        case 'Closed':
+                            return 'red';
+                        default:
+                            return 'blue';
+                    }
+                }
+            },
+            methods: {
+                fetchStocks() {
+                    axios.get('/stocks')
+                        .then(response => {
+                            if (response.data.code === 0) {
+                                this.stocks = response.data.data;
+                            } else {
+                                console.error('获取股票列表失败:', response.data.message);
+                            }
+                        })
+                        .catch(error => console.error('获取股票列表失败:', error));
+                },
+                selectStock(code) {
+                    axios.get(`/stock_detail/${code}`)
+                        .then(response => {
+                            if (response.data.code === 0) {
+                                this.selectedStock = response.data.data;
+                                console.log('Selected stock:', this.selectedStock);
+                                this.$nextTick(() => {
+                                    if (this.selectedStock && this.selectedStock.code) {
+                                        this.fetchPriceCurve(this.selectedStock.code, true);
+                                        this.fetchOrderQueue(this.selectedStock.code);
+                                        this.fetchTradeHistory(this.selectedStock.code);
+                                    } else {
+                                        console.error('Selected stock data is invalid');
+                                    }
+                                });
+                            } else {
+                                console.error('获取股票详情失败:', response.data.message);
+                            }
+                        })
+                        .catch(error => {
+                            console.error('获取股票详情失败:', error);
+                        });
+                },
+                fetchPriceCurve(code, isInitial = true) {
+                    let params = {};
+                    if (isInitial) {
+                        this.priceHistory = [];
+                        this.lastFetchedTime = null;
+                        params = {
+                            start_time: "09:30:00",
+                            end_time: "15:00:00"
+                        };
+                    } else {
+                        if (!this.lastFetchedTime) return;
+                        params = {
+                            start_time: this.addOneSecond(this.lastFetchedTime),
+                            end_time: "15:00:00"
+                        };
+                    }
+
+                    axios.get(`/price_history/${code}`, { params })
+                        .then(response => {
+                            if (response.data.code === 0 && response.data.data && Array.isArray(response.data.data) && response.data.data.length > 0) {
+                                this.updatePriceHistory(response.data.data);
+                                this.renderChart();
+                            } else {
+                                console.log('No price history data received');
+                            }
+                        })
+                        .catch(error => {
+                            console.error('获取价格曲线失败:', error);
+                        });
+                },
+                updatePriceHistory(newData) {
+                    console.log('Updating price history with new data:', newData);
+                    if (Array.isArray(newData) && newData.length > 0) {
+                        // 验证数据格式
+                        const isValidData = newData.every(item =>
+                            Array.isArray(item) &&
+                            item.length === 3 &&
+                            typeof item[0] === 'string' &&
+                            typeof item[1] === 'number' &&
+                            typeof item[2] === 'number'
+                        );
+                        if (!isValidData) {
+                            console.error('Invalid price history data format');
+                            return;
+                        }
+                        newData.forEach(item => {
+                            item[0] = item[0].split(':').slice(0, 2).join(':');
+                        });
+                        this.priceHistory = [...this.priceHistory, ...newData];
+                        this.lastFetchedTime = newData[newData.length - 1][0];
+                    } else {
+                        console.log('No new price history data to update');
+                    }
+                },
+                addOneSecond(timeString) {
+                    const [hours, minutes, seconds] = timeString.split(':').map(Number);
+                    const date = new Date(2000, 0, 1, hours, minutes, seconds + 1);
+                    return date.toTimeString().slice(0, 8);
+                },
+                renderChart() {
+                    console.log('Rendering chart with price history:', this.priceHistory);
+                    if (!this.selectedStock || typeof this.selectedStock.start_price === 'undefined') {
+                        console.error('Selected stock or start price is undefined');
+                        return;
+                    }
+
+                    if (this.chart) {
+                        this.chart.dispose();
+                    }
+                    this.chart = echarts.init(document.getElementById('priceChart'));
+
+                    const startPrice = this.selectedStock.start_price;
+
+                    // 创建完整的时间序列
+                    const fullTimeSequence = [];
+                    const startTime = new Date('2000-01-01T09:30:00');
+                    const endTime = new Date('2000-01-01T15:00:00');
+                    for (let time = new Date(startTime); time <= endTime; time.setMinutes(time.getMinutes() + 1)) {
+                        if (time >= new Date('2000-01-01T11:30:00') && time < new Date('2000-01-01T13:00:00')) {
+                            continue;
+                        }
+                        fullTimeSequence.push(time.toTimeString().slice(0, 5));
+                    }
+
+                    // 如果没有数据或数据不完整，创建一个包含所有时间点的数据集
+                    const completeData = fullTimeSequence.map(time => {
+                        const existingDataPoint = this.priceHistory.find(item => item[0] === time);
+                        return existingDataPoint || [time, null, null];
+                    });
+
+                    const option = {
+                        animation: false,
+                        tooltip: {
+                            trigger: "axis",
+                            position: function (pt) {
+                                return [pt[0], "10%"];
+                            },
+                            formatter: (params) => {
+                                const time = params[0].value[0];
+                                const price = params[0].value[1];
+                                const volume = params[0].value[2];
+                                if (price === null) {
+                                    return '';  // 返回空字符串，这样鼠标悬浮在空数据上时不会显示提示
+                                }
+                                const change = ((price - startPrice) / startPrice * 100).toFixed(2);
+                                return `时间: ${time}<br>价格: ${this.formatPrice(price)}<br>涨跌幅: ${change}%<br>成交量: ${volume}`;
+                            }
+                        },
+                        grid: {
+                            left: "3%",
+                            right: "4%",
+                            bottom: "3%",
+                            top: "3%",
+                            containLabel: true
+                        },
+                        xAxis: {
+                            type: "category",
+                            data: completeData.map(item => item[0]),
+                            boundaryGap: false,
+                            axisLine: { onZero: false },
+                            axisTick: { show: false },
+                            axisLabel: { show: false }
+                        },
+                        yAxis: {
+                            type: "value",
+                            scale: true,
+                            splitLine: { show: false },
+                            axisLabel: {
+                                formatter: (value) => {
+                                    return this.formatPrice(value);
+                                }
+                            }
+                        },
+                        series: [
+                            {
+                                name: "Price",
+                                type: "line",
+                                data: completeData.map(item => [item[0], item[1]]),
+                                smooth: true,
+                                symbol: "none",
+                                sampling: "average",
+                                itemStyle: {
+                                    color: "#FAA296"
+                                },
+                                areaStyle: {
+                                    color: "#FDE7E1"
+                                },
+                                connectNulls: true  // 连接空数据点
+                            }
+                        ]
+                    };
+
+                    console.log('Chart option:', option);
+                    try {
+                        this.chart.setOption(option);
+                    } catch (error) {
+                        console.error('Error setting chart option:', error);
+                    }
+                },
+                fetchTradeHistory(code) {
+                    axios.get(`/trade_history/${code}`, {
+                        params: {
+                            page: 1,
+                            page_size: 10
+                        }
+                    })
+                    .then(response => {
+                        if (response.data.code === 0) {
+                            this.recentTrades = response.data.data.list.map(trade => ({
+                                ...trade,
+                                timestamp: this.formatTime(trade.timestamp),
+                                price: this.formatPrice(trade.price),
+                                trade_type: trade.trade_type === 0 ? 'buy' : 'sell'
+                            }));
+                        } else {
+                            console.error('获取交易历史失败:', response.data.message);
+                        }
+                    })
+                    .catch(error => console.error('获取交易历史失败:', error));
+                },
+                fetchExchangeDetails() {
+                    axios.get('/exchange_details')
+                        .then(response => {
+                            if (response.data.code === 0) {
+                                const data = response.data.data;
+                                this.currentTime = data.current_timestamp;
+                                this.exchangeName = data.name;
+                                this.currentPeriod = data.current_period;
+                            } else {
+                                console.error('获取交易所详情失败:', response.data.message);
+                            }
+                        })
+                        .catch(error => console.error('获取交易所详情失败:', error));
+                },
+                submitOrder() {
+                    if (!this.currentPeriod.allow_order) {
+                        this.showErrorMessage('当前时间不允许交易。');
+                        return;
+                    }
+                    const order = this.orderForm;
+
+                    if (order.quantity % 100 !== 0) {
+                        this.showErrorMessage('交易数量必须是100的倍数。');
+                        return;
+                    }
+
+                    const orderPrice = Math.round(order.price * 100);
+                    if (orderPrice < this.selectedStock.limit_lower || orderPrice > this.selectedStock.limit_upper) {
+                        this.showErrorMessage(`价格必须在${this.formatPrice(this.selectedStock.limit_lower)}元到${this.formatPrice(this.selectedStock.limit_upper)}元之间。`);
+                        return;
+                    }
+
+                    const endpoint = order.type === 'buy' ? '/buy' : '/sell';
+
+                    axios.post(endpoint, {
+                        user_id: 1,
+                        stock_code: this.selectedStock.code,
+                        quantity: order.quantity,
+                        price: orderPrice
+                    })
+                        .then(response => {
+                            if (response.data.code === 0) {
+                                this.$message.success(`${order.type === 'buy' ? '买入' : '卖出'}订单提交成功`);
+                                order.quantity = null;
+                                order.price = null;
+                                this.updateSelectedStock();
+                            } else {
+                                this.showErrorMessage(response.data.message);
+                            }
+                        })
+                        .catch(error => {
+                            console.error(`${order.type === 'buy' ? '买入' : '卖出'}订单提交失败:`, error);
+                            this.showErrorMessage(`${order.type === 'buy' ? '买入' : '卖出'}订单提交失败。请重试。`);
+                        });
+                },
+                formatTime(timestamp) {
+                    const date = new Date(timestamp);
+                    return date.toLocaleTimeString('zh-CN', { hour12: false });
+                },
+                updateSelectedStock() {
+                    if (this.selectedStock) {
+                        this.selectStock(this.selectedStock.code);
+                    }
+                },
+                fetchOrderQueue(code) {
+                    axios.get(`/order_queue/${code}`)
+                        .then(response => {
+                            if (response.data.code === 0) {
+                                const data = response.data.data;
+                                // 确保 bids 和 asks 总是有 5 个元素
+                                const bids = data.bids.slice(0, 5);
+                                const asks = data.asks.slice(0, 5);
+                                while (bids.length < 5) bids.push(null);
+                                while (asks.length < 5) asks.push(null);
+                                this.orderQueue = { bids, asks };
+                            } else {
+                                console.error('获取买卖队列失败:', response.data.message);
+                            }
+                        })
+                        .catch(error => console.error('获取买卖队列失败:', error));
+                },
+                showErrorMessage(message) {
+                    this.$message.error(message);
+                },
+                resizeChart() {
+                    if (this.chart) {
+                        this.chart.resize();
+                    }
+                },
+                formatPrice(value) {
+                    if (typeof value === 'number') {
+                        return (value / 100).toFixed(2);
+                    } else if (typeof value === 'string') {
+                        return value;
+                    } else {
+                        return '--';
+                    }
+                }
+            },
+            beforeDestroy() {
+                if (this.priceUpdateInterval) {
+                    clearInterval(this.priceUpdateInterval);
+                }
+                window.removeEventListener('resize', this.resizeChart);
+            }
+        });
+    </script>
+</body>
+
+</html>
